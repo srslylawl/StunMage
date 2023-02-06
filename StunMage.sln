@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32328.378
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StunMage", "StunMage.csproj", "{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StunMageDLL", "StunMageDLL\StunMageDLL.csproj", "{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {0A128D0F-6A40-43A9-A557-2E5D0BFA117B}
+	EndGlobalSection
+EndGlobal
