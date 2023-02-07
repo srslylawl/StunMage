@@ -101,6 +101,7 @@ namespace STUN {
                 //var multiCastIP = IPAddress.Parse("224.5.6.7");
                 //holePunchSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(multiCastIP));
                 //holePunchSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 30);
+                holePunchSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 holePunchSocket.Bind(new IPEndPoint(IPAddress.Any, (int)Input_PortToFree.Value));
                 logFunc?.Invoke($"Now listening for packets at local endpoint: {holePunchSocket.LocalEndPoint}!");
                 logFunc?.Invoke($"Now sending request packets to peer: {peerEndPoint} at interval of {sendInterval} seconds");
