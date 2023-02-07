@@ -98,9 +98,6 @@ namespace STUN {
         private async Task StartHolePunch(Action<string> logFunc, float sendInterval, IPEndPoint peerEndPoint) {
             try {
                 holePunchSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                //var multiCastIP = IPAddress.Parse("224.5.6.7");
-                //holePunchSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(multiCastIP));
-                //holePunchSocket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 30);
                 holePunchSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 holePunchSocket.Bind(new IPEndPoint(IPAddress.Any, (int)Input_PortToFree.Value));
                 logFunc?.Invoke($"Now listening for packets at local endpoint: {holePunchSocket.LocalEndPoint}!");

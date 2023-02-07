@@ -36,6 +36,7 @@ namespace STUN {
 			return str;
 		}
 
+		//best-case scenario - whatever port we bind to will be used externally and remains the same for different ips
 		public bool PortsAreIdentical() {
 			return (LocalEndPoint.Port == External_1_1.Port) &&
 				   (External_1_1.Port == External_1_2.Port) &&
@@ -43,11 +44,20 @@ namespace STUN {
 				   (External_2_1.Port == External_2_2.Port);
 		}
 
+		//ok scenario - external is predictable initially, does however changes per different ip
 		public bool PortsAreIdenticalInitially() {
 			return (LocalEndPoint.Port == External_1_1.Port) &&
 						  (External_1_1.Port == External_1_2.Port) &&
 						  (External_2_1.Port == External_2_2.Port);
 		}
+
+		//inconvenient - external endpoint does not map to local endpoint, however stays the same when pinging a different ip
+		public bool PortsAreUnpredictableButConsistent() {
+			return (LocalEndPoint.Port != External_1_1.Port) &&
+				(External_1_1.Port == External_1_2.Port) &&
+				(External_1_2.Port == External_2_1.Port) &&
+				External_2_1.Port == External_2_2.Port);
+        }
 
 		public bool PortsArePredictable(out int delta) {
 			delta = 0;
