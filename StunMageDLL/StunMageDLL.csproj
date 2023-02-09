@@ -74,6 +74,7 @@
     <Compile Include="..\Source\STUN_NetType.cs">
       <Link>STUN_NetType.cs</Link>
     </Compile>
+    <Compile Include="NetworkBehaviorGroups.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="StunMage.cs" />
   </ItemGroup>

@@ -42,7 +42,8 @@ namespace STUN {
 
         private Socket holePunchSocket;
         private string publicIPString;
-
+        private Label Label_Outbound_Behavior;
+        private TextBox Text_Outbound_Behavior;
         private bool holePunchInProgress;
 
 
@@ -106,15 +107,15 @@ namespace STUN {
                 var message_out = new HolePunchMessage {
                     type = HolePunchMessage.MessageType.Request
                 };
-                message_out.Payload = Input_Payload.Text;
+                message_out.Password = Input_Payload.Text;
                 var sendData = message_out.ToByteArray();
                 var nextSendTime = DateTime.Now;
 
                 while (holePunchInProgress) {
                     if (nextSendTime <= DateTime.Now) {
                         nextSendTime = DateTime.Now.AddSeconds(sendInterval);
-                        if (Input_Payload.Text != message_out.Payload) {
-                            message_out.Payload = Input_Payload.Text;
+                        if (Input_Payload.Text != message_out.Password) {
+                            message_out.Password = Input_Payload.Text;
                             sendData = message_out.ToByteArray();
                         }
                         logFunc?.Invoke($"Sent packet to peer.");
@@ -143,7 +144,7 @@ namespace STUN {
                                 case HolePunchMessage.MessageType.Request:
                                     logFunc?.Invoke(
                                         $"[Incoming] Request received from: {sourceEndPoint}! " +
-                                        $"{(string.IsNullOrWhiteSpace(packet.Payload) ? "" : $"Payload: '{packet.Payload}' | ")}Sending Response..");
+                                        $"{(string.IsNullOrWhiteSpace(packet.Password) ? "" : $"Payload: '{packet.Password}' | ")}Sending Response..");
                                     HolePunchMessage response = new HolePunchMessage {
                                         type = HolePunchMessage.MessageType.Response,
                                         mirroredEndPoint = (IPEndPoint)sourceEndPoint
@@ -152,7 +153,7 @@ namespace STUN {
                                     break;
                                 case HolePunchMessage.MessageType.Response:
                                     logFunc?.Invoke($"[Incoming] Response received from: {sourceEndPoint}! Mirrored external endpoint: {packet.mirroredEndPoint}" +
-                                                    $"{(string.IsNullOrWhiteSpace(packet.Payload) ? "" : $" Payload: {packet.Payload}")}");
+                                                    $"{(string.IsNullOrWhiteSpace(packet.Password) ? "" : $" Payload: {packet.Password}")}");
                                     break;
                                 default:
                                     throw new ArgumentOutOfRangeException();
@@ -214,7 +215,7 @@ namespace STUN {
 
                 IPEndPoint primaryStunServer = new IPEndPoint(stun_PrimaryIPAddress, (int)Input_StunServer_Port.Value);
                 using (StunClient stunClient = new StunClient(primaryStunServer, (int)Input_ConnectionAttempts.Value, (double)Input_TimeOut.Value, Log)) {
-                    await stunClient.TryQueryIncomingNATType();
+                    await stunClient.QueryNATType();
 
                     Text_NAT_Type.Text = stunClient.NATType.ToString();
 
@@ -225,7 +226,7 @@ namespace STUN {
                     publicIPString = stunClient.publicIPAddress.ToString();
                     TextBox_PublicIP.Text = publicIPString;
 
-                    OutboundBehaviorTest test1 = stunClient.IncomingQueryTest;
+                    OutboundBehaviorTest test1 = stunClient.OutboundBehaviorTest;
 
                     if (test1 == null) {
                         test1 = await stunClient.ConductBehaviorTest(primaryStunServer);
@@ -245,10 +246,29 @@ namespace STUN {
                     Log(test2.ToString());
 
                     //analyze behavior tests
-                    bool predictable = OutboundBehaviorTest.OutBoundBehaviorIsPredictable(test1, test2);
-                    Log(predictable
-                        ? "External endpoints match internal endpoint and stay consistent after sending packets to different IP. - Hole-punching should work!"
-                        : "External endpoints are inconsistent.");
+                    var outboundBehaviorType = OutboundBehaviorTest.OutBoundBehaviorIsPredictable(test1, test2);
+                    switch (outboundBehaviorType) {
+                        case OutboundBehaviorType.Predictable_And_Consistent:
+                            Log("External endpoints match local endpoints' port and remain the same for different remote IP's and ports.");
+                            break;
+                        case OutboundBehaviorType.Predictable_Once_Per_IP:
+                            Log("External endpoints match local endpoints' port for one remote IP only.");
+                            break;
+                        case OutboundBehaviorType.Predictable_Once:
+                            Log("External endpoints match local endpoints' port for one remote IP and port combination only.");
+                            break;
+                        case OutboundBehaviorType.UnpredictableButConsistent:
+                            Log("External endpoints don't match local endpoint's port but remain consistent for different remote IP's and ports.");
+                            break;
+                        case OutboundBehaviorType.UnpredictableButConsistent_Per_IP:
+                            Log("External endpoints don't match local endpoint's port but remain consistent for the first remote IP only.");
+                            break;
+                        case OutboundBehaviorType.Unpredictable:
+                            Log("External endpoints don't match local endpoint's port and are unpredictable.");
+                            break;
+
+                    }
+                    Text_Outbound_Behavior.Text = outboundBehaviorType.ToString();
                 }
             }
             catch (Exception ex) {
@@ -341,6 +361,8 @@ namespace STUN {
             this.Input_HolePunch_Address = new System.Windows.Forms.TextBox();
             this.panel1 = new System.Windows.Forms.Panel();
             this.Label_NAT_Type = new System.Windows.Forms.Label();
+            this.Label_Outbound_Behavior = new System.Windows.Forms.Label();
+            this.Text_Outbound_Behavior = new System.Windows.Forms.TextBox();
             ((System.ComponentModel.ISupportInitialize)(this.Input_PortToFree)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.Input_StunServer_Port)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.Input_ConnectionAttempts)).BeginInit();
@@ -352,7 +374,7 @@ namespace STUN {
             // Label_PortToFree
             // 
             this.Label_PortToFree.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Label_PortToFree.Location = new System.Drawing.Point(205, 163);
+            this.Label_PortToFree.Location = new System.Drawing.Point(205, 197);
             this.Label_PortToFree.Name = "Label_PortToFree";
             this.Label_PortToFree.Size = new System.Drawing.Size(75, 20);
             this.Label_PortToFree.TabIndex = 0;
@@ -362,12 +384,21 @@ namespace STUN {
             // Input_PortToFree
             // 
             this.Input_PortToFree.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Input_PortToFree.Location = new System.Drawing.Point(286, 165);
-            this.Input_PortToFree.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
+            this.Input_PortToFree.Location = new System.Drawing.Point(286, 199);
+            this.Input_PortToFree.Maximum = new decimal(new int[] {
+            65535,
+            0,
+            0,
+            0});
             this.Input_PortToFree.Name = "Input_PortToFree";
             this.Input_PortToFree.Size = new System.Drawing.Size(67, 20);
             this.Input_PortToFree.TabIndex = 1;
-            this.Input_PortToFree.Value = new decimal(new int[] { 7777, 0, 0, 0 });
+            this.toolTip1.SetToolTip(this.Input_PortToFree, "Incoming port - needs to match peer\'s peer address port.");
+            this.Input_PortToFree.Value = new decimal(new int[] {
+            7777,
+            0,
+            0,
+            0});
             // 
             // Label_STUN_Server
             // 
@@ -389,29 +420,41 @@ namespace STUN {
             this.Input_StunServer.TabIndex = 3;
             this.Input_StunServer.Text = "stun.stunprotocol.org";
             this.Input_StunServer.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
-            this.toolTip1.SetToolTip(this.Input_StunServer, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" + "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" + "at can easily by found on the internet.");
+            this.toolTip1.SetToolTip(this.Input_StunServer, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" +
+        "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" +
+        "at can easily by found on the internet.");
             // 
             // Input_StunServer_Port
             // 
             this.Input_StunServer_Port.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.Input_StunServer_Port.Location = new System.Drawing.Point(286, 34);
-            this.Input_StunServer_Port.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
+            this.Input_StunServer_Port.Maximum = new decimal(new int[] {
+            65535,
+            0,
+            0,
+            0});
             this.Input_StunServer_Port.Name = "Input_StunServer_Port";
             this.Input_StunServer_Port.Size = new System.Drawing.Size(67, 20);
             this.Input_StunServer_Port.TabIndex = 4;
             this.toolTip1.SetToolTip(this.Input_StunServer_Port, "STUN Server port number - usually 3478, but might differ from server to server.");
-            this.Input_StunServer_Port.Value = new decimal(new int[] { 3478, 0, 0, 0 });
+            this.Input_StunServer_Port.Value = new decimal(new int[] {
+            3478,
+            0,
+            0,
+            0});
             // 
             // TextBox_Output
             // 
             this.TextBox_Output.AcceptsReturn = true;
-            this.TextBox_Output.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
-            this.TextBox_Output.Location = new System.Drawing.Point(13, 268);
+            this.TextBox_Output.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.TextBox_Output.Location = new System.Drawing.Point(13, 302);
             this.TextBox_Output.Multiline = true;
             this.TextBox_Output.Name = "TextBox_Output";
             this.TextBox_Output.ReadOnly = true;
             this.TextBox_Output.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.TextBox_Output.Size = new System.Drawing.Size(365, 230);
+            this.TextBox_Output.Size = new System.Drawing.Size(365, 269);
             this.TextBox_Output.TabIndex = 3;
             // 
             // Label_ConnectionAttempts
@@ -428,12 +471,24 @@ namespace STUN {
             // 
             this.Input_ConnectionAttempts.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.Input_ConnectionAttempts.Location = new System.Drawing.Point(145, 85);
-            this.Input_ConnectionAttempts.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.Input_ConnectionAttempts.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.Input_ConnectionAttempts.Maximum = new decimal(new int[] {
+            10,
+            0,
+            0,
+            0});
+            this.Input_ConnectionAttempts.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.Input_ConnectionAttempts.Name = "Input_ConnectionAttempts";
             this.Input_ConnectionAttempts.Size = new System.Drawing.Size(67, 20);
             this.Input_ConnectionAttempts.TabIndex = 11;
-            this.Input_ConnectionAttempts.Value = new decimal(new int[] { 3, 0, 0, 0 });
+            this.Input_ConnectionAttempts.Value = new decimal(new int[] {
+            3,
+            0,
+            0,
+            0});
             // 
             // Label_TimeOut
             // 
@@ -449,23 +504,39 @@ namespace STUN {
             // 
             this.Input_TimeOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.Input_TimeOut.DecimalPlaces = 1;
-            this.Input_TimeOut.Increment = new decimal(new int[] { 5, 0, 0, 65536 });
+            this.Input_TimeOut.Increment = new decimal(new int[] {
+            5,
+            0,
+            0,
+            65536});
             this.Input_TimeOut.Location = new System.Drawing.Point(286, 85);
-            this.Input_TimeOut.Maximum = new decimal(new int[] { 10, 0, 0, 0 });
-            this.Input_TimeOut.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+            this.Input_TimeOut.Maximum = new decimal(new int[] {
+            10,
+            0,
+            0,
+            0});
+            this.Input_TimeOut.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            0});
             this.Input_TimeOut.Name = "Input_TimeOut";
             this.Input_TimeOut.Size = new System.Drawing.Size(67, 20);
             this.Input_TimeOut.TabIndex = 13;
-            this.Input_TimeOut.Value = new decimal(new int[] { 2, 0, 0, 0 });
+            this.Input_TimeOut.Value = new decimal(new int[] {
+            2,
+            0,
+            0,
+            0});
             // 
             // Button_CheckNATType
             // 
             this.Button_CheckNATType.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Button_CheckNATType.Location = new System.Drawing.Point(253, 110);
+            this.Button_CheckNATType.Location = new System.Drawing.Point(286, 110);
             this.Button_CheckNATType.Name = "Button_CheckNATType";
-            this.Button_CheckNATType.Size = new System.Drawing.Size(100, 20);
+            this.Button_CheckNATType.Size = new System.Drawing.Size(67, 45);
             this.Button_CheckNATType.TabIndex = 15;
-            this.Button_CheckNATType.Text = "Check NAT Type";
+            this.Button_CheckNATType.Text = "Check";
             this.toolTip1.SetToolTip(this.Button_CheckNATType, "Attempts to determine NAT Type through using the STUN Protocol.");
             this.Button_CheckNATType.UseVisualStyleBackColor = true;
             this.Button_CheckNATType.Click += new System.EventHandler(this.Button_CheckNATType_Click);
@@ -473,19 +544,21 @@ namespace STUN {
             // Button_HolePunch
             // 
             this.Button_HolePunch.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Button_HolePunch.Location = new System.Drawing.Point(253, 242);
+            this.Button_HolePunch.Location = new System.Drawing.Point(253, 276);
             this.Button_HolePunch.Name = "Button_HolePunch";
             this.Button_HolePunch.Size = new System.Drawing.Size(100, 20);
             this.Button_HolePunch.TabIndex = 16;
             this.Button_HolePunch.Text = "UDP Hole Punch";
-            this.toolTip1.SetToolTip(this.Button_HolePunch, "Attempts to communicate with peer through UDP hole punching.\r\nRequires you to ent" + "er the peer\'s IP address and port. \r\n\r\nRequires your peer to run the UDP hole pu" + "nch protocol at the same time.\r\n\r\n");
+            this.toolTip1.SetToolTip(this.Button_HolePunch, "Attempts to communicate with peer through UDP hole punching.\r\nRequires you to ent" +
+        "er the peer\'s IP address and port. \r\n\r\nRequires your peer to run the UDP hole pu" +
+        "nch protocol at the same time.\r\n\r\n");
             this.Button_HolePunch.UseVisualStyleBackColor = true;
             this.Button_HolePunch.Click += new System.EventHandler(this.Button_HolePunch_Click);
             // 
             // Label_PeerAddress
             // 
             this.Label_PeerAddress.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Label_PeerAddress.Location = new System.Drawing.Point(99, 189);
+            this.Label_PeerAddress.Location = new System.Drawing.Point(99, 223);
             this.Label_PeerAddress.Name = "Label_PeerAddress";
             this.Label_PeerAddress.Size = new System.Drawing.Size(80, 20);
             this.Label_PeerAddress.TabIndex = 17;
@@ -496,13 +569,21 @@ namespace STUN {
             // Input_HolePunch_Port
             // 
             this.Input_HolePunch_Port.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Input_HolePunch_Port.Location = new System.Drawing.Point(286, 190);
-            this.Input_HolePunch_Port.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
+            this.Input_HolePunch_Port.Location = new System.Drawing.Point(286, 224);
+            this.Input_HolePunch_Port.Maximum = new decimal(new int[] {
+            65535,
+            0,
+            0,
+            0});
             this.Input_HolePunch_Port.Name = "Input_HolePunch_Port";
             this.Input_HolePunch_Port.Size = new System.Drawing.Size(67, 20);
             this.Input_HolePunch_Port.TabIndex = 19;
-            this.toolTip1.SetToolTip(this.Input_HolePunch_Port, "Peer port number - usually 3478, but might differ from server to server.");
-            this.Input_HolePunch_Port.Value = new decimal(new int[] { 7777, 0, 0, 0 });
+            this.toolTip1.SetToolTip(this.Input_HolePunch_Port, "Peer port number - needs to be peer\'s \"listen port\"");
+            this.Input_HolePunch_Port.Value = new decimal(new int[] {
+            7777,
+            0,
+            0,
+            0});
             // 
             // Label_PublicIP
             // 
@@ -537,34 +618,44 @@ namespace STUN {
             this.Input_StunServer_2.TabIndex = 26;
             this.Input_StunServer_2.Text = "stun.dls.net";
             this.Input_StunServer_2.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
-            this.toolTip1.SetToolTip(this.Input_StunServer_2, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" + "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" + "at can easily by found on the internet.");
+            this.toolTip1.SetToolTip(this.Input_StunServer_2, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" +
+        "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" +
+        "at can easily by found on the internet.");
             // 
             // Input_StunServer2_Port
             // 
             this.Input_StunServer2_Port.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.Input_StunServer2_Port.Location = new System.Drawing.Point(286, 60);
-            this.Input_StunServer2_Port.Maximum = new decimal(new int[] { 65535, 0, 0, 0 });
+            this.Input_StunServer2_Port.Maximum = new decimal(new int[] {
+            65535,
+            0,
+            0,
+            0});
             this.Input_StunServer2_Port.Name = "Input_StunServer2_Port";
             this.Input_StunServer2_Port.Size = new System.Drawing.Size(67, 20);
             this.Input_StunServer2_Port.TabIndex = 27;
             this.toolTip1.SetToolTip(this.Input_StunServer2_Port, "STUN Server port number - usually 3478, but might differ from server to server.");
-            this.Input_StunServer2_Port.Value = new decimal(new int[] { 3478, 0, 0, 0 });
+            this.Input_StunServer2_Port.Value = new decimal(new int[] {
+            3478,
+            0,
+            0,
+            0});
             // 
             // Label_Payload
             // 
             this.Label_Payload.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Label_Payload.Location = new System.Drawing.Point(99, 216);
+            this.Label_Payload.Location = new System.Drawing.Point(99, 250);
             this.Label_Payload.Name = "Label_Payload";
             this.Label_Payload.Size = new System.Drawing.Size(80, 20);
             this.Label_Payload.TabIndex = 30;
-            this.Label_Payload.Text = "Payload";
+            this.Label_Payload.Text = "Password";
             this.Label_Payload.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             this.toolTip1.SetToolTip(this.Label_Payload, "String that get\'s sent to peer.");
             // 
             // Input_Payload
             // 
             this.Input_Payload.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Input_Payload.Location = new System.Drawing.Point(185, 216);
+            this.Input_Payload.Location = new System.Drawing.Point(185, 250);
             this.Input_Payload.MaxLength = 100;
             this.Input_Payload.Name = "Input_Payload";
             this.Input_Payload.RightToLeft = System.Windows.Forms.RightToLeft.No;
@@ -577,12 +668,13 @@ namespace STUN {
             // Button_PortForward
             // 
             this.Button_PortForward.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Button_PortForward.Location = new System.Drawing.Point(99, 163);
+            this.Button_PortForward.Location = new System.Drawing.Point(99, 197);
             this.Button_PortForward.Name = "Button_PortForward";
             this.Button_PortForward.Size = new System.Drawing.Size(122, 20);
             this.Button_PortForward.TabIndex = 33;
             this.Button_PortForward.Text = "Port Forward (UPnP)";
-            this.toolTip1.SetToolTip(this.Button_PortForward, "Attempts to port-forward using UPnP (has to be enabled/supported on NAT device/ro" + "uter).");
+            this.toolTip1.SetToolTip(this.Button_PortForward, "Attempts to port-forward using UPnP (has to be enabled/supported on NAT device/ro" +
+        "uter).");
             this.Button_PortForward.UseVisualStyleBackColor = true;
             this.Button_PortForward.Click += new System.EventHandler(this.Button_PortForward_Click);
             // 
@@ -593,7 +685,7 @@ namespace STUN {
             this.Text_NAT_Type.Name = "Text_NAT_Type";
             this.Text_NAT_Type.ReadOnly = true;
             this.Text_NAT_Type.RightToLeft = System.Windows.Forms.RightToLeft.No;
-            this.Text_NAT_Type.Size = new System.Drawing.Size(102, 20);
+            this.Text_NAT_Type.Size = new System.Drawing.Size(135, 20);
             this.Text_NAT_Type.TabIndex = 32;
             this.Text_NAT_Type.Text = "unknown";
             // 
@@ -610,7 +702,7 @@ namespace STUN {
             // Input_HolePunch_Address
             // 
             this.Input_HolePunch_Address.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Input_HolePunch_Address.Location = new System.Drawing.Point(185, 190);
+            this.Input_HolePunch_Address.Location = new System.Drawing.Point(185, 224);
             this.Input_HolePunch_Address.Name = "Input_HolePunch_Address";
             this.Input_HolePunch_Address.RightToLeft = System.Windows.Forms.RightToLeft.No;
             this.Input_HolePunch_Address.Size = new System.Drawing.Size(95, 20);
@@ -620,8 +712,9 @@ namespace STUN {
             // 
             // panel1
             // 
+            this.panel1.Anchor = System.Windows.Forms.AnchorStyles.None;
             this.panel1.BackColor = System.Drawing.SystemColors.ControlText;
-            this.panel1.Location = new System.Drawing.Point(13, 141);
+            this.panel1.Location = new System.Drawing.Point(13, 175);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(365, 1);
             this.panel1.TabIndex = 28;
@@ -636,9 +729,32 @@ namespace STUN {
             this.Label_NAT_Type.Text = "NAT Type";
             this.Label_NAT_Type.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             // 
+            // Label_Outbound_Behavior
+            // 
+            this.Label_Outbound_Behavior.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.Label_Outbound_Behavior.Location = new System.Drawing.Point(30, 135);
+            this.Label_Outbound_Behavior.Name = "Label_Outbound_Behavior";
+            this.Label_Outbound_Behavior.Size = new System.Drawing.Size(109, 20);
+            this.Label_Outbound_Behavior.TabIndex = 34;
+            this.Label_Outbound_Behavior.Text = "Outbound Behavior";
+            this.Label_Outbound_Behavior.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            // 
+            // Text_Outbound_Behavior
+            // 
+            this.Text_Outbound_Behavior.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.Text_Outbound_Behavior.Location = new System.Drawing.Point(145, 135);
+            this.Text_Outbound_Behavior.Name = "Text_Outbound_Behavior";
+            this.Text_Outbound_Behavior.ReadOnly = true;
+            this.Text_Outbound_Behavior.RightToLeft = System.Windows.Forms.RightToLeft.No;
+            this.Text_Outbound_Behavior.Size = new System.Drawing.Size(135, 20);
+            this.Text_Outbound_Behavior.TabIndex = 35;
+            this.Text_Outbound_Behavior.Text = "unknown";
+            // 
             // winFormMain
             // 
-            this.ClientSize = new System.Drawing.Size(390, 506);
+            this.ClientSize = new System.Drawing.Size(390, 579);
+            this.Controls.Add(this.Text_Outbound_Behavior);
+            this.Controls.Add(this.Label_Outbound_Behavior);
             this.Controls.Add(this.Button_PortForward);
             this.Controls.Add(this.Text_NAT_Type);
             this.Controls.Add(this.Label_NAT_Type);
@@ -679,6 +795,7 @@ namespace STUN {
             ((System.ComponentModel.ISupportInitialize)(this.Input_StunServer2_Port)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
+
         }
 
         private System.Windows.Forms.Label Label_NAT_Type;

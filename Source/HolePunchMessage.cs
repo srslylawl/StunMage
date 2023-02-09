@@ -7,22 +7,23 @@ namespace STUN {
 			None = 0,
 			Request = 1,
 			Response = 2,
+			Ready = 3
 		}
 
 		public IPEndPoint mirroredEndPoint;
 		public MessageType type;
-		public string Payload;
+		public string Password;
 
 		public void Parse(byte[] data) {
 			int offset = 0;
 
 			type = ParseMessageType(data, ref offset);
 
-			if (type == MessageType.Response) {
+			if (type == MessageType.Response || type == MessageType.Ready) {
 				mirroredEndPoint = ParseEndPoint(data, ref offset);
 			}
 
-			Payload = ParsePayLoad(data, ref offset);
+			Password = ParsePayLoad(data, ref offset);
 
 		}
 
@@ -65,9 +66,9 @@ namespace STUN {
 
 			byte[] payLoadData = null;
 			byte[] payLoadHeaderData = null;
-			bool hasPayLoad = !string.IsNullOrEmpty(Payload);
+			bool hasPayLoad = !string.IsNullOrEmpty(Password);
 			if (hasPayLoad) {
-				payLoadData = Encoding.UTF8.GetBytes(Payload);	
+				payLoadData = Encoding.UTF8.GetBytes(Password);	
 				var payLoadLength = payLoadData.Length;
 				payLoadLength = Math.Min(payLoadLength, 400);
 				payLoadHeaderData = new byte[sizeof(int)];

@@ -1,6 +1,37 @@
 ﻿using System.Net;
 
 namespace STUN {
+	public enum OutboundBehaviorType {
+		/// <summary>
+		///External Port matches Local Port and doesn't change for different remote IPs
+		/// </summary>
+		Predictable_And_Consistent = 1,
+
+		/// <summary>
+		///External Port matches Local Port for the first remote IP Address contacted
+		/// </summary>
+		Predictable_Once_Per_IP = 2,
+
+		/// <summary>
+		///External Port matches Local Port for the first remote IP + Port combination only
+		/// </summary>
+		Predictable_Once = 3,
+
+		/// <summary>
+		///External Port does not match Local Port but remains the same for different remote IPs - can be queried.
+		/// </summary>
+		UnpredictableButConsistent = 4,
+
+		/// <summary>
+		///External Port does not match Local Port but remains the same for all ports per IP
+		/// </summary>
+		UnpredictableButConsistent_Per_IP = 5,
+
+		/// <summary>
+		///External Port does not match Local Port and changes for every IP + Port combination
+		/// </summary>
+		Unpredictable = 6
+    }
 	public class OutboundBehaviorTest {
 		public IPEndPoint LocalEndPoint;
 
@@ -45,10 +76,17 @@ namespace STUN {
 		}
 
 		//ok scenario - external is predictable initially, does however changes per different ip
-		public bool PortsAreIdenticalInitially() {
+		public bool PortsArePredictableOncePerIP() {
 			return (LocalEndPoint.Port == External_1_1.Port) &&
 						  (External_1_1.Port == External_1_2.Port) &&
-						  (External_2_1.Port == External_2_2.Port);
+						  (External_2_1.Port == External_2_2.Port) &&
+						  (External_2_1.Port != External_1_1.Port);
+		}
+
+		//ok - external is predictable once per ip and port
+		public bool PortsArePredictableOncePerPort() {
+			return (LocalEndPoint.Port == External_1_1.Port) &&
+						  (External_1_1.Port != External_1_2.Port);
 		}
 
 		//inconvenient - external endpoint does not map to local endpoint, however stays the same when pinging a different ip
@@ -56,40 +94,47 @@ namespace STUN {
 			return (LocalEndPoint.Port != External_1_1.Port) &&
 				(External_1_1.Port == External_1_2.Port) &&
 				(External_1_2.Port == External_2_1.Port) &&
-				External_2_1.Port == External_2_2.Port);
+				(External_2_1.Port == External_2_2.Port);
         }
 
-		public bool PortsArePredictable(out int delta) {
-			delta = 0;
-
-			if (!PortsAreIdentical() || !PortsAreIdenticalInitially())
-				return false;
-
-			if (PortsAreIdentical()) {
-				delta = 0;
-				return true;
-			}
-			
-			var delta1 = External_1_1.Port - External_1_2.Port;
-			var delta2 = External_2_1.Port - External_2_2.Port;
-
-			if (delta1 != delta2) {
-				return false;
-			}
-
-			var delta3 = External_1_2.Port - External_2_1.Port;
-
-			delta = delta3;
-
-			return true;
+		public bool PortsAreUnpredictableButConsistentPerIP() {
+			return (LocalEndPoint.Port != External_1_1.Port) &&
+				(External_1_1.Port == External_1_2.Port) &&
+				(External_1_2.Port != External_2_1.Port) &&
+				(External_2_1.Port == External_2_2.Port);
 		}
 
-		public static bool OutBoundBehaviorIsPredictable(params OutboundBehaviorTest[] tests) {
+		public static OutboundBehaviorType OutBoundBehaviorIsPredictable(params OutboundBehaviorTest[] tests) {
+			OutboundBehaviorType worstCase = OutboundBehaviorType.Predictable_And_Consistent;
+
 			foreach (var outboundBehaviorTest in tests) {
-				if (!outboundBehaviorTest.PortsAreIdentical()) return false;
+				OutboundBehaviorType thisCase;
+				if (outboundBehaviorTest.PortsAreIdentical()) {
+					continue;
+                }
+
+				if(outboundBehaviorTest.PortsArePredictableOncePerIP()) {
+					thisCase = OutboundBehaviorType.Predictable_Once_Per_IP;
+                }
+				else if(outboundBehaviorTest.PortsArePredictableOncePerPort()) {
+					thisCase = OutboundBehaviorType.Predictable_Once;
+				}
+				else if (outboundBehaviorTest.PortsAreUnpredictableButConsistent()) {
+					thisCase = OutboundBehaviorType.UnpredictableButConsistent;
+                }
+				else if (outboundBehaviorTest.PortsAreUnpredictableButConsistentPerIP()) {
+					thisCase = OutboundBehaviorType.UnpredictableButConsistent_Per_IP;
+                }
+				else {
+					thisCase = OutboundBehaviorType.Unpredictable;
+                }
+				
+				if((int)thisCase > (int)worstCase) {
+					worstCase = thisCase;
+                }
 			}
 
-			return true;
+			return worstCase;
 		}
 		
 	}

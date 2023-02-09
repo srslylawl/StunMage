@@ -9,18 +9,21 @@ namespace STUN {
     public class StunMage {
         public event Action<string> LogFunctionVerbose;
         public event Action<string> LogFunction;
-        private Socket holePunchSocket;
         private bool holePunchInProgress;
 
         public int ConnectionAttempts = 3;
         public float ConnectionTimeout = 2.0f;
 
-        public STUN_NetType NATType;
+        public float HolePunchSendInterval = 2.0f;
+
+        public STUN_NetType NATType { get; private set; }
+        public OutboundBehaviorType OutboundBehaviorType { get; private set; }
+
         public string PublicIPString = "";
 
-        public string Payload = "Hello!";
+        public string HolePunchPassword = "Hello!";
 
-        public ushort IncomingPort = 7777;
+        public bool PasswordHasToMatch;
 
         private bool TryResolveHostName(string host, out IPAddress address) {
             address = IPAddress.None;
@@ -60,79 +63,6 @@ namespace STUN {
             return false;
         }
 
-        private async Task StartHolePunch(Action<string> logFunc, float sendInterval, IPEndPoint peerEndPoint, ushort incomingPort) {
-            try {
-                holePunchSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                holePunchSocket.Bind(new IPEndPoint(IPAddress.Any, incomingPort));
-                logFunc?.Invoke($"Now listening for packets at local endpoint: {holePunchSocket.LocalEndPoint}!");
-                logFunc?.Invoke($"Now sending request packets to peer: {peerEndPoint} at interval of {sendInterval} seconds");
-
-                var message_out = new HolePunchMessage {
-                    type = HolePunchMessage.MessageType.Request
-                };
-                message_out.Payload = Payload;
-                var sendData = message_out.ToByteArray();
-                var nextSendTime = DateTime.Now;
-
-                while (holePunchInProgress) {
-                    if (nextSendTime <= DateTime.Now) {
-                        nextSendTime = DateTime.Now.AddSeconds(sendInterval);
-                        if (Payload != message_out.Payload) {
-                            message_out.Payload = Payload;
-                            sendData = message_out.ToByteArray();
-                        }
-
-                        holePunchSocket.SendTo(sendData, peerEndPoint);
-                        logFunc?.Invoke($"Sent packet to peer.");
-                    }
-
-                    if (holePunchSocket.Poll(100, SelectMode.SelectRead)) {
-                        //received 
-                        byte[] receiveBuffer = new byte[512];
-
-                        EndPoint sourceEndPoint = new IPEndPoint(IPAddress.Any, 0);
-                        holePunchSocket.ReceiveFrom(receiveBuffer, ref sourceEndPoint);
-
-                        // Parse message
-                        HolePunchMessage packet = new HolePunchMessage();
-                        packet.Parse(receiveBuffer);
-                        switch (packet.type) {
-                            case HolePunchMessage.MessageType.None:
-                                logFunc?.Invoke($"Empty message received from: {sourceEndPoint}");
-                                break;
-                            case HolePunchMessage.MessageType.Request:
-                                logFunc?.Invoke(
-                                    $"[Incoming] Request received from: {sourceEndPoint}! " +
-                                    $"{(string.IsNullOrWhiteSpace(packet.Payload) ? "" : $"Payload: '{packet.Payload}' | ")}Sending Response..");
-                                HolePunchMessage response = new HolePunchMessage {
-                                    type = HolePunchMessage.MessageType.Response,
-                                    mirroredEndPoint = (IPEndPoint)sourceEndPoint
-                                };
-                                holePunchSocket.SendTo(response.ToByteArray(), sourceEndPoint);
-                                break;
-                            case HolePunchMessage.MessageType.Response:
-                                logFunc?.Invoke($"[Incoming] Response received from: {sourceEndPoint}! Mirrored external endpoint: {packet.mirroredEndPoint}" +
-                                                $"{(string.IsNullOrWhiteSpace(packet.Payload) ? "" : $" Payload: {packet.Payload}")}");
-                                break;
-                            default:
-                                throw new ArgumentOutOfRangeException();
-                        }
-                    }
-
-                    await Task.Delay(1);
-                }
-            }
-            catch (Exception E) {
-                logFunc?.Invoke($"{E.GetType().Name}:{E.Message}");
-            }
-
-            finally {
-                holePunchSocket.Dispose();
-                holePunchSocket = null;
-                logFunc?.Invoke("Stopped listening for packets.");
-            }
-        }
-
         public async Task CheckNATType(string stunServerPrimary, int portPrimary, string stunServerSecondary, int portSecondary) {
             if (string.IsNullOrWhiteSpace(stunServerPrimary)) {
                 Log("No STUN server specified.", false);
@@ -150,7 +80,7 @@ namespace STUN {
 
                 IPEndPoint primaryStunServer = new IPEndPoint(stun_PrimaryIPAddress, portPrimary);
                 using (StunClient stunClient = new StunClient(primaryStunServer, ConnectionAttempts, ConnectionTimeout, (s) => Log(s))) {
-                    await stunClient.TryQueryIncomingNATType();
+                    await stunClient.QueryNATType();
 
                     NATType = stunClient.NATType;
 
@@ -160,7 +90,7 @@ namespace STUN {
 
                     PublicIPString = stunClient.publicIPAddress.ToString();
 
-                    OutboundBehaviorTest test1 = stunClient.IncomingQueryTest;
+                    OutboundBehaviorTest test1 = stunClient.OutboundBehaviorTest;
 
                     if (test1 == null) {
                         test1 = await stunClient.ConductBehaviorTest(primaryStunServer);
@@ -181,13 +111,29 @@ namespace STUN {
                     Log(test2.ToString());
 
                     //analyze behavior tests
-                    bool predictable = OutboundBehaviorTest.OutBoundBehaviorIsPredictable(test1, test2);
-                    Log(predictable
-                        ? "External endpoints match internal endpoint and stay consistent after sending packets to different IP."
-                        : "External endpoints are inconsistent.");
-                    Log(predictable
-                        ? "Hole-punching should work, outbound behavior is consistent!"
-                        : "Hole-punching will probably not work. Port-forwarding required.", false);
+                    var outboundBehaviorType = OutboundBehaviorTest.OutBoundBehaviorIsPredictable(test1, test2);
+                    switch (outboundBehaviorType) {
+                        case OutboundBehaviorType.Predictable_And_Consistent:
+                            Log("External endpoints match local endpoints' port and remain the same for different remote IP's and ports.");
+                            break;
+                        case OutboundBehaviorType.Predictable_Once_Per_IP:
+                            Log("External endpoints match local endpoints' port for one remote IP only.");
+                            break;
+                        case OutboundBehaviorType.Predictable_Once:
+                            Log("External endpoints match local endpoints' port for one remote IP and port combination only.");
+                            break;
+                        case OutboundBehaviorType.UnpredictableButConsistent:
+                            Log("External endpoints don't match local endpoint's port but remain consistent for different remote IP's and ports.");
+                            break;
+                        case OutboundBehaviorType.UnpredictableButConsistent_Per_IP:
+                            Log("External endpoints don't match local endpoint's port but remain consistent for the first remote IP only.");
+                            break;
+                        case OutboundBehaviorType.Unpredictable:
+                            Log("External endpoints don't match local endpoint's port and are unpredictable.");
+                            break;
+                    }
+
+                    OutboundBehaviorType = outboundBehaviorType;
                 }
             }
             finally {
@@ -195,49 +141,197 @@ namespace STUN {
             }
         }
 
-        public async void StartHolePunch(string ip_peer, int portPeer) {
-            if (holePunchInProgress) {
-                holePunchInProgress = false;
+        private async Task startHolePunch(IPEndPoint peerEndPoint, ushort localPort, Action<IPEndPoint> onHolePunchSuccess) {
+            try {
+                using (var holePunchSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)) {
+                    holePunchSocket.Bind(new IPEndPoint(IPAddress.Any, localPort));
+                    await doHolePunch(holePunchSocket, peerEndPoint, onHolePunchSuccess);
+                }
             }
-            else {
-                if (string.IsNullOrWhiteSpace(ip_peer)) {
-                    Log("Enter a valid peer IP Address.", false);
-                    return;
-                }
-
-                int peerPort = portPeer;
-                if (!IPAddress.TryParse(ip_peer, out IPAddress peerIP)) {
-                    Log("Invalid Peer IP.", false);
-                    return;
-                }
-
-                holePunchInProgress = true;
-
-                await StartHolePunch(Log, ConnectionTimeout, new IPEndPoint(peerIP, peerPort), IncomingPort);
+            catch (Exception E) {
+                Log($"{E.GetType().Name}:{E.Message}");
             }
         }
 
-        public async Task<bool> QueryPublicIPAddress(string stunServerPrimary, int portPrimary) {
-            Log($"Trying to resolving host name: '{stunServerPrimary}' ...");
-            if (!TryResolveHostName(stunServerPrimary, out IPAddress stun_PrimaryIPAddress)) {
-                Log($"Failed to resolve host name '{stunServerPrimary}'! Double-check host name and DNS settings. Perhaps try a different Server.", false);
-                return false;
-            }
-            StunClient stunClient = new StunClient(new IPEndPoint(stun_PrimaryIPAddress, portPrimary), ConnectionAttempts, ConnectionTimeout, Log);
-            var result = await stunClient.GetPublicIP();
+        private async Task doHolePunch(Socket socket, IPEndPoint remoteEndPoint, Action<IPEndPoint> onHolePunchSuccess) {
+            bool readyOrResponseReceived = false;
 
-            if (result != IPAddress.None) {
-                PublicIPString = result.ToString();
-                return true;
-            }
+            Log($"Now listening for packets at local endpoint: {socket.LocalEndPoint}!");
+            Log($"Now sending request packets to peer: {remoteEndPoint} at interval of {HolePunchSendInterval} seconds");
 
-            return false;
+            var message_out = new HolePunchMessage {
+                type = HolePunchMessage.MessageType.Request
+            };
+            message_out.Password = HolePunchPassword;
+            var sendData = message_out.ToByteArray();
+            var nextSendTime = DateTime.Now;
+
+            while (holePunchInProgress) {
+                if (nextSendTime <= DateTime.Now) {
+                    if (readyOrResponseReceived) {
+                        holePunchInProgress = false;
+                        onHolePunchSuccess?.Invoke(remoteEndPoint);
+                        break;
+                    }
+                    nextSendTime = DateTime.Now.AddSeconds(HolePunchSendInterval);
+                    if (HolePunchPassword != message_out.Password) {
+                        message_out.Password = HolePunchPassword;
+                        sendData = message_out.ToByteArray();
+                    }
+                    try {
+                        socket.SendTo(sendData, remoteEndPoint);
+                        Log($"Sent packet to peer.");
+                    }
+                    catch (Exception E) {
+                        Log($"Error while sending packet to peer: {E.Message}");
+                    }
+                }
+                try {
+                    if (socket.Poll(100, SelectMode.SelectRead)) {
+                        //received 
+                        byte[] receiveBuffer = new byte[512];
+
+                        EndPoint sourceEndPoint = new IPEndPoint(IPAddress.Any, 0);
+                        socket.ReceiveFrom(receiveBuffer, ref sourceEndPoint);
+
+                        // Parse message
+                        HolePunchMessage incomingMessage = new HolePunchMessage();
+                        incomingMessage.Parse(receiveBuffer);
+                        switch (incomingMessage.type) {
+                            case HolePunchMessage.MessageType.None:
+                                Log($"Empty message received from: {sourceEndPoint}");
+                                break;
+                            case HolePunchMessage.MessageType.Request:
+                                Log($"[Incoming] Request received from: {sourceEndPoint}! ");
+                                var match = incomingMessage.Password == HolePunchPassword;
+                                if (!PasswordHasToMatch || match) {
+                                    HolePunchMessage response = new HolePunchMessage {
+                                        type = HolePunchMessage.MessageType.Response,
+                                        mirroredEndPoint = (IPEndPoint)sourceEndPoint
+                                    };
+                                    Log($"{(PasswordHasToMatch? "Passwords match! " : "")}Sending reply...");
+                                    socket.SendTo(response.ToByteArray(), sourceEndPoint);
+                                    remoteEndPoint = (IPEndPoint)sourceEndPoint;
+                                    //Remote endpoint can theoretically change if we pinged wrong port but only needed to send to peer ip to open our nat
+                                }
+                                else {
+                                    Log($"Password does not match HolePunchPassword - sending no reply.");
+                                }
+                                break;
+                            case HolePunchMessage.MessageType.Response:
+                                if (!readyOrResponseReceived) {
+                                    Log($"[Incoming] Response received from: {sourceEndPoint}! Mirrored external endpoint: {incomingMessage.mirroredEndPoint}" +
+                                                $"{(string.IsNullOrWhiteSpace(incomingMessage.Password) ? "" : $" Payload: {incomingMessage.Password}")}");
+
+                                    message_out.type = HolePunchMessage.MessageType.Ready;
+                                    message_out.mirroredEndPoint = (IPEndPoint)sourceEndPoint;
+                                }
+                                readyOrResponseReceived = true;
+                                break;
+                            case HolePunchMessage.MessageType.Ready:
+                                //Done here
+                                Log($"[Success!] Ready received from: {sourceEndPoint}");
+                                if (!readyOrResponseReceived) {
+                                    //done here, send ready for 1 more sec then return
+                                    message_out.type = HolePunchMessage.MessageType.Ready;
+                                    message_out.mirroredEndPoint = (IPEndPoint)sourceEndPoint;
+                                    nextSendTime = DateTime.Now.AddSeconds(HolePunchSendInterval);
+                                }
+                                readyOrResponseReceived = true;
+                                break;
+                        }
+                    }
+                }
+                catch (Exception e) {
+                    Log($"Error: {e.Message}");
+                }
+                await Task.Delay(1);
+            }
+        }
+
+        /// <summary>
+        /// Starts hole-punching.
+        /// Runs until manually cancelled or until success.
+        /// Local port is not guaranteed to be bound to matching External Port - if external port is unpredictable but queriable, use an existing socket instead.
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <param name="remoteEndPoint"></param>
+        /// <param name="onHolePunchSuccess">Invoked on success, contains potentially different remote endpoint</param>
+        /// <returns></returns>
+        public async void StartHolePunch(ushort localPort, IPEndPoint remoteEndPoint, Action<IPEndPoint> onSuccess) {
+            if (holePunchInProgress) {
+                Log("Hole-punch already in progress.", true);
+                return;
+            }
+            holePunchInProgress = true;
+            await startHolePunch(remoteEndPoint, localPort, onSuccess);
+        }
+
+        /// <summary>
+        /// Starts hole-punching with an existing socket which will not be disposed.
+        /// Runs until manually cancelled or until success.
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <param name="remoteEndPoint"></param>
+        /// <param name="onHolePunchSuccess">Invoked on success, contains potentially different remote endpoint</param>
+        /// <returns></returns>
+        public async void StartHolePunch(Socket socket, IPEndPoint remoteEndPoint, Action<IPEndPoint> onSuccess) {
+            if (holePunchInProgress) {
+                Log("Hole-punch already in progress.", true);
+                return;
+            }
+            holePunchInProgress = true;
+            await doHolePunch(socket, remoteEndPoint, onSuccess);
+        }
+
+        /// <summary>
+        /// Returns bound Socket with a queried external endpoint.
+        /// </summary>
+        /// <param name="stunServerEndPoint"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception">Throws if socket fails to bind or unable to query public ip endpoint through stun server.</exception>
+        public async Task<(Socket socket, IPEndPoint externalEndPoint)> GetSocketWithExternalEndPoint(IPEndPoint stunServerEndPoint) {
+            Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            socket.ReceiveTimeout = (int)ConnectionTimeout * 1000;
+            socket.SendTimeout = (int)ConnectionTimeout * 1000;
+            socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+
+
+            var result = await QueryPublicIPEndPoint(stunServerEndPoint, socket);
+            if (result.Address == IPAddress.None) {
+                throw new Exception("Unable to query external endpoint.");
+            }
+            return (socket, result);
+        }
+
+        /// <summary>
+        /// Returns public endpoint. Since allocated local port is random, this is probably only useful to get External IP Address.
+        /// </summary>
+        /// <param name="stunServerEndPoint"></param>
+        /// <returns></returns>
+        public async Task<IPEndPoint> QueryPublicIPEndPoint(IPEndPoint stunServerEndPoint) {
+            using (StunClient stunClient = new StunClient(stunServerEndPoint, ConnectionAttempts, ConnectionTimeout, Log)) {
+                var result = await stunClient.GetPublicEndPoint();
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// Query mapped endpoint of a specific socket - will not be disposed.
+        /// </summary>
+        /// <param name="stunServerEndPoint"></param>
+        /// <param name="socket">Socket to query, has to already be bound to a local endpoint</param>
+        /// <returns></returns>
+        public async Task<IPEndPoint> QueryPublicIPEndPoint(IPEndPoint stunServerEndPoint, Socket socket) {
+            using (StunClient stunClient = new StunClient(socket, stunServerEndPoint, ConnectionAttempts, ConnectionTimeout, Log)) {
+                var result = await stunClient.GetPublicEndPoint();
+                return result;
+            }
         }
 
         public void StopHolePunch() {
             holePunchInProgress = false;
         }
-
         private void Log(string message) => Log(message, true);
 
         private void Log(string message, bool verbose = true) {
@@ -247,5 +341,42 @@ namespace STUN {
             LogFunctionVerbose?.Invoke(message);
         }
 
+        public static IncomingBehaviorGroup GetFromNatType(STUN_NetType stunType) {
+            switch (stunType) {
+                case STUN_NetType.UDP_blocked:
+                    return IncomingBehaviorGroup.E_Blocked;
+                case STUN_NetType.Open_Internet:
+                    return IncomingBehaviorGroup.A_Open;
+                case STUN_NetType.Symmetric_UDP_Firewall:
+                    return IncomingBehaviorGroup.D_RequiresSendToIPAndPort;
+                case STUN_NetType.Full_Cone:
+                    return IncomingBehaviorGroup.B_RequiresMapping;
+                case STUN_NetType.Restricted_Cone:
+                    return IncomingBehaviorGroup.C_RequiresSendToIP;
+                case STUN_NetType.Port_Restricted_Cone:
+                    return IncomingBehaviorGroup.D_RequiresSendToIPAndPort;
+                case STUN_NetType.Symmetric:
+                    return IncomingBehaviorGroup.D_RequiresSendToIPAndPort;
+                default: throw new ArgumentOutOfRangeException(nameof(stunType));
+            }
+        }
+
+        public static OutgoingBehaviorGroup GetFromOutBoundBehaviorType(OutboundBehaviorType type) {
+            switch (type) {
+                case OutboundBehaviorType.Predictable_And_Consistent:
+                case OutboundBehaviorType.Predictable_Once_Per_IP:
+                case OutboundBehaviorType.Predictable_Once:
+                    return OutgoingBehaviorGroup.Predictable;
+
+                case OutboundBehaviorType.UnpredictableButConsistent:
+                   return OutgoingBehaviorGroup.Queryable;
+
+                case OutboundBehaviorType.UnpredictableButConsistent_Per_IP:
+                case OutboundBehaviorType.Unpredictable:
+                    return OutgoingBehaviorGroup.Unpredictable;
+
+                default: throw new ArgumentException(nameof(type));
+            }
+        }
     }
 }

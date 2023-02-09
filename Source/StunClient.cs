@@ -17,28 +17,56 @@ namespace STUN {
         private int port_stunServer_primary;
         private int port_stunServer_secondary;
 
-        public IPAddress publicIPAddress;
-        public OutboundBehaviorTest IncomingQueryTest;
+        private bool disposeSocket;
 
+        public IPAddress publicIPAddress;
+        public OutboundBehaviorTest OutboundBehaviorTest;
 
         public STUN_NetType NATType;
 
+        /// <summary>
+        /// Initializes a new StunClient. Will use a Socket mapped to a random free dynamic port.
+        /// </summary>
+        /// <param name="stunServerEndPoint"></param>
+        /// <param name="connectionAttempts"></param>
+        /// <param name="connectionTimeout"></param>
+        /// <param name="log"></param>
         public StunClient(IPEndPoint stunServerEndPoint, int connectionAttempts = 3, double connectionTimeout = 2.0, Action<string> log = null) {
+            disposeSocket = true;
+            Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            s.ReceiveTimeout = (int)ConnectionTimeout * 1000;
+            s.SendTimeout = (int)ConnectionTimeout * 1000;
+            s.Bind(new IPEndPoint(IPAddress.Any, 0));
+
             ip_stunServer_primary = stunServerEndPoint.Address;
             port_stunServer_primary = stunServerEndPoint.Port;
             ConnectionAttempts = connectionAttempts;
             ConnectionTimeout = connectionTimeout;
+
             Log = log;
-            Socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            Socket.ReceiveTimeout = (int)ConnectionTimeout * 1000;
-            Socket.SendTimeout = (int)ConnectionTimeout * 1000;
-            Socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+        }
+
+        /// <summary>
+        /// Initializes a new StunClient with an existing Socket, assumes the Socket to already be bound to a local EndPoint. Socket will not be disposed.
+        /// </summary>
+        /// <param name="socket"></param>
+        /// <param name="stunServerEndPoint"></param>
+        /// <param name="connectionAttempts"></param>
+        /// <param name="connectionTimeout"></param>
+        /// <param name="log"></param>
+        public StunClient(Socket socket, IPEndPoint stunServerEndPoint, int connectionAttempts = 3, double connectionTimeout = 2.0, Action<string> log = null) {
+            ip_stunServer_primary = stunServerEndPoint.Address;
+            port_stunServer_primary = stunServerEndPoint.Port;
+            ConnectionAttempts = connectionAttempts;
+            ConnectionTimeout = connectionTimeout;
+            Socket = socket;
+            Log = log;
         }
 
         ~StunClient() {
             Dispose(false);
         }
-        
+
         public async Task<StunMessage> BasicBindingRequest(IPEndPoint endPoint, STUN_ChangeRequest changeRequest = null) {
             StunMessage test = new StunMessage {
                 ChangeRequest = changeRequest
@@ -46,7 +74,7 @@ namespace STUN {
             return await DoTransaction(Socket, test, endPoint);
         }
 
-        public async Task<IPAddress> GetPublicIP() {
+        public async Task<IPEndPoint> GetPublicEndPoint() {
             IPEndPoint endPoint_primaryServerPrimaryPoint = new IPEndPoint(ip_stunServer_primary, port_stunServer_primary);
             var response = await BasicBindingRequest(endPoint_primaryServerPrimaryPoint);
             if (response == null) {
@@ -54,13 +82,18 @@ namespace STUN {
                 Log?.Invoke("No response at all - UDP seems to be blocked.");
                 Log?.Invoke("===========");
                 NATType = STUN_NetType.UDP_blocked;
-                return IPAddress.None;
+                return new IPEndPoint(IPAddress.None, 0);
             }
 
-            return response.MappedAddress.Address;
+            return response.MappedAddress;
         }
 
-        public async Task TryQueryIncomingNATType() {
+
+        /// <summary>
+        /// Will perform an OutboundBehaviorTest when NAT Type is Symmetric, stored in member variable OutBoundBehaviorTest
+        /// </summary>
+        /// <returns></returns>
+        public async Task QueryNATType() {
             //Init Request
             IPEndPoint endPoint_primaryServerPrimaryPoint = new IPEndPoint(ip_stunServer_primary, port_stunServer_primary);
             var response = await BasicBindingRequest(endPoint_primaryServerPrimaryPoint);
@@ -71,7 +104,7 @@ namespace STUN {
                 NATType = STUN_NetType.UDP_blocked;
                 return;
             }
-            
+
             IPEndPoint publicEndPoint = response.MappedAddress;
             publicIPAddress = publicEndPoint.Address;
             ip_stunServer_secondary = response.ChangedAddress.Address;
@@ -109,11 +142,11 @@ namespace STUN {
                 NATType = STUN_NetType.Symmetric_UDP_Firewall;
                 return;
             }
-            
+
             Log?.Invoke("Local and external endpoints mismatch -> NAT present. Probing NAT type...");
             StunMessage response_from_different_ip_and_port =
                 await BasicBindingRequest(endPoint_primaryServerPrimaryPoint, new STUN_ChangeRequest(true, true));
-            
+
             Log?.Invoke("Requesting response from different IP and port...");
             if (response_from_different_ip_and_port != null) {
                 // Full cone NAT.
@@ -125,9 +158,9 @@ namespace STUN {
                 return;
             }
             Log?.Invoke("No response received from different IP and port.");
-            
+
             // No Response - Testing response from secondary server to check if external endpoint mapping remains the same
-            
+
             Log?.Invoke($"Requesting direct response from secondary STUN Server endpoint...");
             IPEndPoint endPoint_secondaryServerPrimaryPort = new IPEndPoint(ip_stunServer_secondary, port_stunServer_primary);
             StunMessage response_from_secondary_server = await BasicBindingRequest(endPoint_secondaryServerPrimaryPort);
@@ -139,7 +172,7 @@ namespace STUN {
                 NATType = STUN_NetType.UDP_blocked;
                 return;
             }
-            
+
             if (response_from_secondary_server.MappedAddress.Equals(publicEndPoint)) {
                 Log?.Invoke($"Response received - requesting response from alternative port...");
                 StunMessage response_from_different_port = await BasicBindingRequest(endPoint_secondaryServerPrimaryPort, new STUN_ChangeRequest(false, true));
@@ -154,7 +187,7 @@ namespace STUN {
                 NATType = STUN_NetType.Port_Restricted_Cone;
                 return;
             }
-            
+
             Log?.Invoke($"Response received, but NAT allocated a different endpoint: ({response_from_secondary_server.MappedAddress}); NAT Type: 'Symmetric'");
             NATType = STUN_NetType.Symmetric;
 
@@ -171,10 +204,10 @@ namespace STUN {
             }
 
             outboundBehaviorTest.External_1_2 = response_from_primary_with_alt_port.MappedAddress;
-            
+
             IPEndPoint endPoint_secondaryServer_secondaryPort = new IPEndPoint(ip_stunServer_secondary, port_stunServer_secondary);
             var response_from_secondary_with_alt_port = await BasicBindingRequest(endPoint_secondaryServer_secondaryPort);
-            
+
             if (response_from_secondary_with_alt_port == null) {
                 Log?.Invoke("Unable to probe - response from secondary server with alternate port not received.");
                 return;
@@ -182,7 +215,7 @@ namespace STUN {
 
             outboundBehaviorTest.External_2_2 = response_from_secondary_with_alt_port.MappedAddress;
 
-            IncomingQueryTest = outboundBehaviorTest;
+            OutboundBehaviorTest = outboundBehaviorTest;
         }
 
         public async Task<OutboundBehaviorTest> ConductBehaviorTest(IPEndPoint serverEndPoint) {
@@ -215,7 +248,7 @@ namespace STUN {
                             ipAddresses[1] = res.ChangedAddress.Address;
                             ports[1] = res.ChangedAddress.Port;
                         }
-                        
+
                         test.SetEndPoint(server, port, res.MappedAddress);
                     }
                 }
@@ -261,9 +294,8 @@ namespace STUN {
             return null;
         }
 
-
         private void Dispose(bool disposing) {
-            if (disposing) {
+            if (disposing && disposeSocket) {
                 Socket?.Dispose();
             }
         }

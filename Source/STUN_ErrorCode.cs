@@ -19,8 +19,6 @@ namespace STUN
             m_ReasonText = reasonText;
         }
 
-        #region Properties Implementation
-
         /// <summary>
         /// Gets or sets error code.
         /// </summary>
@@ -40,8 +38,6 @@ namespace STUN
 
             set{ m_ReasonText = value; }
         }
-
-        #endregion
 
     }
 }
