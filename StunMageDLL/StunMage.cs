@@ -9,7 +9,8 @@ namespace STUN {
     public class StunMage {
         public event Action<string> LogFunctionVerbose;
         public event Action<string> LogFunction;
-        private bool holePunchInProgress;
+
+        public bool HolePunchInProgress { get; private set;}
 
         public int ConnectionAttempts = 3;
         public float ConnectionTimeout = 2.0f;
@@ -19,13 +20,15 @@ namespace STUN {
         public STUN_NetType NATType { get; private set; }
         public OutboundBehaviorType OutboundBehaviorType { get; private set; }
 
+        public EndPointBehaviorTuple EndPointBehaviorTuple { get; private set; }
+
         public string PublicIPString = "";
 
         public string HolePunchPassword = "Hello!";
 
         public bool PasswordHasToMatch;
 
-        private bool TryResolveHostName(string host, out IPAddress address) {
+        public bool TryResolveHostName(string host, out IPAddress address) {
             address = IPAddress.None;
             try {
                 var addresses = Dns.GetHostAddresses(host);
@@ -44,7 +47,7 @@ namespace STUN {
 
             return address != null;
         }
-        public async Task<bool> TryPortForwarding(int port) {
+        public async Task<bool> TryPortForwarding(ushort port) {
             try {
                 Log("Asking NAT device (your router) to port-forward using UPnP. Looking for NAT device...");
                 PortForwarder portForwarder = new PortForwarder();
@@ -63,23 +66,9 @@ namespace STUN {
             return false;
         }
 
-        public async Task CheckNATType(string stunServerPrimary, int portPrimary, string stunServerSecondary, int portSecondary) {
-            if (string.IsNullOrWhiteSpace(stunServerPrimary)) {
-                Log("No STUN server specified.", false);
-                return;
-            }
-
+        public async Task CheckNATType(IPEndPoint stunServer_primary, IPEndPoint stunServer_secondary) {
             try {
-                Log($"Trying to resolving host name: '{stunServerPrimary}' ...");
-                if (!TryResolveHostName(stunServerPrimary, out IPAddress stun_PrimaryIPAddress)) {
-                    Log($"Failed to resolve host name: '{stunServerPrimary}'! Double-check host name and DNS settings. Perhaps try a different Server.", false);
-                    return;
-                }
-
-                Log($"STUN server IP obtained: {stun_PrimaryIPAddress}. Sending request..");
-
-                IPEndPoint primaryStunServer = new IPEndPoint(stun_PrimaryIPAddress, portPrimary);
-                using (StunClient stunClient = new StunClient(primaryStunServer, ConnectionAttempts, ConnectionTimeout, (s) => Log(s))) {
+                using (StunClient stunClient = new StunClient(stunServer_primary, ConnectionAttempts, ConnectionTimeout, (s) => Log(s))) {
                     await stunClient.QueryNATType();
 
                     NATType = stunClient.NATType;
@@ -93,20 +82,11 @@ namespace STUN {
                     OutboundBehaviorTest test1 = stunClient.OutboundBehaviorTest;
 
                     if (test1 == null) {
-                        test1 = await stunClient.ConductBehaviorTest(primaryStunServer);
+                        test1 = await stunClient.ConductBehaviorTest(stunServer_primary);
                     }
 
                     Log(test1.ToString());
-
-                    string hostName = stunServerSecondary;
-                    Log($"Trying to resolving host name: '{stunServerSecondary}' ...");
-                    if (!TryResolveHostName(hostName, out IPAddress stun_alt)) {
-                        Log($"Failed to resolve host name '{stunServerSecondary}'! Double-check host name and DNS settings. Perhaps try a different Server.", false);
-                        return;
-                    }
-
-                    IPEndPoint altStunServer = new IPEndPoint(stun_alt, portSecondary);
-                    OutboundBehaviorTest test2 = await stunClient.ConductBehaviorTest(altStunServer);
+                    OutboundBehaviorTest test2 = await stunClient.ConductBehaviorTest(stunServer_secondary);
 
                     Log(test2.ToString());
 
@@ -134,6 +114,12 @@ namespace STUN {
                     }
 
                     OutboundBehaviorType = outboundBehaviorType;
+
+                    EndPointBehaviorTuple behaviorTuple = new EndPointBehaviorTuple() { 
+                        IncomingBehaviorGroup = NatTypeToIncomingBehaviorGroup(NATType), 
+                        OutgoingBehaviorGroup = OutBoundBehaviorTypeToGroup(outboundBehaviorType)};
+
+                    EndPointBehaviorTuple = behaviorTuple;
                 }
             }
             finally {
@@ -166,10 +152,10 @@ namespace STUN {
             var sendData = message_out.ToByteArray();
             var nextSendTime = DateTime.Now;
 
-            while (holePunchInProgress) {
+            while (HolePunchInProgress) {
                 if (nextSendTime <= DateTime.Now) {
                     if (readyOrResponseReceived) {
-                        holePunchInProgress = false;
+                        HolePunchInProgress = false;
                         onHolePunchSuccess?.Invoke(remoteEndPoint);
                         break;
                     }
@@ -259,11 +245,11 @@ namespace STUN {
         /// <param name="onHolePunchSuccess">Invoked on success, contains potentially different remote endpoint</param>
         /// <returns></returns>
         public async void StartHolePunch(ushort localPort, IPEndPoint remoteEndPoint, Action<IPEndPoint> onSuccess) {
-            if (holePunchInProgress) {
+            if (HolePunchInProgress) {
                 Log("Hole-punch already in progress.", true);
                 return;
             }
-            holePunchInProgress = true;
+            HolePunchInProgress = true;
             await startHolePunch(remoteEndPoint, localPort, onSuccess);
         }
 
@@ -276,11 +262,11 @@ namespace STUN {
         /// <param name="onHolePunchSuccess">Invoked on success, contains potentially different remote endpoint</param>
         /// <returns></returns>
         public async void StartHolePunch(Socket socket, IPEndPoint remoteEndPoint, Action<IPEndPoint> onSuccess) {
-            if (holePunchInProgress) {
+            if (HolePunchInProgress) {
                 Log("Hole-punch already in progress.", true);
                 return;
             }
-            holePunchInProgress = true;
+            HolePunchInProgress = true;
             await doHolePunch(socket, remoteEndPoint, onSuccess);
         }
 
@@ -290,11 +276,11 @@ namespace STUN {
         /// <param name="stunServerEndPoint"></param>
         /// <returns></returns>
         /// <exception cref="Exception">Throws if socket fails to bind or unable to query public ip endpoint through stun server.</exception>
-        public async Task<(Socket socket, IPEndPoint externalEndPoint)> GetSocketWithExternalEndPoint(IPEndPoint stunServerEndPoint) {
+        public async Task<(Socket socket, IPEndPoint externalEndPoint)> GetSocketWithQueriedExternalEndPoint(IPEndPoint stunServerEndPoint, ushort customListenPort = 0) {
             Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
             socket.ReceiveTimeout = (int)ConnectionTimeout * 1000;
             socket.SendTimeout = (int)ConnectionTimeout * 1000;
-            socket.Bind(new IPEndPoint(IPAddress.Any, 0));
+            socket.Bind(new IPEndPoint(IPAddress.Any, customListenPort));
 
 
             var result = await QueryPublicIPEndPoint(stunServerEndPoint, socket);
@@ -330,7 +316,7 @@ namespace STUN {
         }
 
         public void StopHolePunch() {
-            holePunchInProgress = false;
+            HolePunchInProgress = false;
         }
         private void Log(string message) => Log(message, true);
 
@@ -341,7 +327,7 @@ namespace STUN {
             LogFunctionVerbose?.Invoke(message);
         }
 
-        public static IncomingBehaviorGroup GetFromNatType(STUN_NetType stunType) {
+        public static IncomingBehaviorGroup NatTypeToIncomingBehaviorGroup(STUN_NetType stunType) {
             switch (stunType) {
                 case STUN_NetType.UDP_blocked:
                     return IncomingBehaviorGroup.E_Blocked;
@@ -361,7 +347,7 @@ namespace STUN {
             }
         }
 
-        public static OutgoingBehaviorGroup GetFromOutBoundBehaviorType(OutboundBehaviorType type) {
+        public static OutgoingBehaviorGroup OutBoundBehaviorTypeToGroup(OutboundBehaviorType type) {
             switch (type) {
                 case OutboundBehaviorType.Predictable_And_Consistent:
                 case OutboundBehaviorType.Predictable_Once_Per_IP:

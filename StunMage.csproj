@@ -10,7 +10,7 @@
     </ApplicationIcon>
     <AssemblyKeyContainerName>
     </AssemblyKeyContainerName>
-    <AssemblyName>StunMage</AssemblyName>
+    <AssemblyName>StunMageClient</AssemblyName>
     <AssemblyOriginatorKeyFile>
     </AssemblyOriginatorKeyFile>
     <DefaultClientScript>JScript</DefaultClientScript>
@@ -91,17 +91,7 @@
     <ErrorReport>prompt</ErrorReport>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="Source\HolePunchMessage.cs" />
-    <Compile Include="Source\MappingProtocol.cs" />
-    <Compile Include="Source\OutboundBehaviorTest.cs" />
-    <Compile Include="Source\PortForwarder.cs" />
     <Compile Include="Source\Program.cs" />
-    <Compile Include="Source\StunClient.cs" />
-    <Compile Include="Source\StunMessage.cs" />
-    <Compile Include="Source\STUN_ChangeRequest.cs" />
-    <Compile Include="Source\STUN_ErrorCode.cs" />
-    <Compile Include="Source\STUN_MessageType.cs" />
-    <Compile Include="Source\STUN_NetType.cs" />
     <Compile Include="Source\winFormMain.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -244,6 +234,12 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Source\Mono.Nat.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="StunMageDLL\StunMageDLL.csproj">
+      <Project>{3af1f9af-d1ae-45a7-9d7c-930b48f35eb2}</Project>
+      <Name>StunMageDLL</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

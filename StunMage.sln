@@ -3,6 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.1.32328.378
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StunMage", "StunMage.csproj", "{7AB36CCF-5FFD-4780-A54E-A102ECA028B5}"
+	ProjectSection(ProjectDependencies) = postProject
+		{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2} = {3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StunMageDLL", "StunMageDLL\StunMageDLL.csproj", "{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}"
 EndProject

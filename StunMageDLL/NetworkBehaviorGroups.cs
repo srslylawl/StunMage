@@ -16,9 +16,9 @@ namespace STUN {
     }
 
     public enum ConnectionTechnique {
-        A_None = 0,
-        B_RequiresHolePunch = 100,
-        C_RequiresBruteForce = 99999,
+        None = 0,
+        HolePunch = 100,
+        Brute_Force_Or_Luck = 99999,
     }
 
     public enum ConnectionCondition {
@@ -54,7 +54,7 @@ namespace STUN {
         private ConnectionPlan Evaluate(EndPointBehaviorTuple other) {
             if (IncomingBehaviorGroup == IncomingBehaviorGroup.E_Blocked || other.IncomingBehaviorGroup == IncomingBehaviorGroup.E_Blocked) {
                 return new ConnectionPlan() {
-                    ConnectionTechnique = ConnectionTechnique.C_RequiresBruteForce,
+                    ConnectionTechnique = ConnectionTechnique.Brute_Force_Or_Luck,
                     ConnectionCondition = ConnectionCondition.Incompatible
                 };
             }
@@ -63,13 +63,13 @@ namespace STUN {
                 //other is open
                 case IncomingBehaviorGroup.A_Open:
                     return new ConnectionPlan() {
-                        ConnectionTechnique = ConnectionTechnique.A_None,
+                        ConnectionTechnique = ConnectionTechnique.None,
                         ConnectionCondition = ConnectionCondition.None
                     };
                 //other is full cone
                 case IncomingBehaviorGroup.B_RequiresMapping: {
                     ConnectionPlan evaluation = new ConnectionPlan() {
-                        ConnectionTechnique = ConnectionTechnique.A_None
+                        ConnectionTechnique = ConnectionTechnique.None
                     };
 
                     evaluation.ConnectionCondition =
@@ -84,16 +84,16 @@ namespace STUN {
                     if (other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Unpredictable) {
                         return new ConnectionPlan() {
                             ConnectionCondition = ConnectionCondition.None,
-                            ConnectionTechnique = ConnectionTechnique.C_RequiresBruteForce
+                            ConnectionTechnique = ConnectionTechnique.Brute_Force_Or_Luck
                         };
                     }
 
                     ConnectionPlan evaluation = new ConnectionPlan() {
-                        ConnectionTechnique = ConnectionTechnique.B_RequiresHolePunch
+                        ConnectionTechnique = ConnectionTechnique.HolePunch
                     };
 
                     if (other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable) {
-                        evaluation.ConnectionCondition = other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable 
+                        evaluation.ConnectionCondition = other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable
                             ? ConnectionCondition.None
                             : ConnectionCondition.ReceiverHasToQuery;
                     }
@@ -104,16 +104,16 @@ namespace STUN {
                     if (other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Unpredictable || OutgoingBehaviorGroup == OutgoingBehaviorGroup.Unpredictable) {
                         return new ConnectionPlan() {
                             ConnectionCondition = ConnectionCondition.None,
-                            ConnectionTechnique = ConnectionTechnique.C_RequiresBruteForce
+                            ConnectionTechnique = ConnectionTechnique.Brute_Force_Or_Luck
                         };
                     }
 
                     var eval = new ConnectionPlan() {
-                        ConnectionTechnique = ConnectionTechnique.B_RequiresHolePunch
+                        ConnectionTechnique = ConnectionTechnique.HolePunch
                     };
 
-                    if(other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable) {
-                        
+                    if (other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable) {
+
                     }
 
                     eval.ConnectionCondition = OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable
@@ -133,16 +133,19 @@ namespace STUN {
 
             bool senderIsBetter = senderCost < receiverCost;
             var bestPlan = senderIsBetter ? evaluation_As_Sender : evaluation_As_Receiver;
-            if (bestPlan.ConnectionTechnique == ConnectionTechnique.C_RequiresBruteForce || bestPlan.ConnectionCondition == ConnectionCondition.Incompatible) {
-                return new ConnectionEvaluation() { ConnectionPossibleWithoutBruteForce = false,
-                    BestRoleForClient = BestRoleForClient.Either, BestEvaluation = bestPlan,};
+            if (bestPlan.ConnectionTechnique == ConnectionTechnique.Brute_Force_Or_Luck || bestPlan.ConnectionCondition == ConnectionCondition.Incompatible) {
+                return new ConnectionEvaluation() {
+                    ConnectionPossibleWithoutBruteForce = false,
+                    BestRoleForClient = BestRoleForClient.Either,
+                    BestEvaluation = bestPlan,
+                };
             }
             BestRoleForClient bestRole = BestRoleForClient.Either;
-            if(senderIsBetter) bestRole = BestRoleForClient.Sender;
+            if (senderIsBetter) bestRole = BestRoleForClient.Sender;
             //cant use !senderIsBetter as then it would also overwrite when equal
-            if(receiverCost < senderCost) bestRole = BestRoleForClient.Receiver;
+            if (receiverCost < senderCost) bestRole = BestRoleForClient.Receiver;
 
-            return new ConnectionEvaluation() { BestEvaluation = bestPlan, BestRoleForClient = bestRole, ConnectionPossibleWithoutBruteForce = true};
+            return new ConnectionEvaluation() { BestEvaluation = bestPlan, BestRoleForClient = bestRole, ConnectionPossibleWithoutBruteForce = true };
         }
     }
 

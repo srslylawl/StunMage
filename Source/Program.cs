@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -9,7 +10,7 @@ namespace STUN
         [STAThread]
         public static void Main()
         {
-            AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
+            //AppDomain.CurrentDomain.AssemblyResolve += CurrentDomain_AssemblyResolve;
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -18,6 +19,7 @@ namespace STUN
         
         private static Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs e)
         {
+            Debug.Print("Searching for assembly: " + e.Name.ToString());
             string _resName = "STUN.Source" + new AssemblyName(e.Name).Name + ".dll";
             using (var _stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(_resName))
             {

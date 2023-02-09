@@ -7,8 +7,8 @@
     <ProjectGuid>{3AF1F9AF-D1AE-45A7-9D7C-930B48F35EB2}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>StunMageDLL</RootNamespace>
-    <AssemblyName>StunMageDLL</AssemblyName>
+    <RootNamespace>STUN</RootNamespace>
+    <AssemblyName>StunMage</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Deterministic>true</Deterministic>
@@ -44,39 +44,19 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\Source\HolePunchMessage.cs">
-      <Link>HolePunchMessage.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\MappingProtocol.cs">
-      <Link>MappingProtocol.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\OutboundBehaviorTest.cs">
-      <Link>OutboundBehaviorTest.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\PortForwarder.cs">
-      <Link>PortForwarder.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\StunClient.cs">
-      <Link>StunClient.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\StunMessage.cs">
-      <Link>StunMessage.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\STUN_ChangeRequest.cs">
-      <Link>STUN_ChangeRequest.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\STUN_ErrorCode.cs">
-      <Link>STUN_ErrorCode.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\STUN_MessageType.cs">
-      <Link>STUN_MessageType.cs</Link>
-    </Compile>
-    <Compile Include="..\Source\STUN_NetType.cs">
-      <Link>STUN_NetType.cs</Link>
-    </Compile>
+    <Compile Include="HolePunchMessage.cs" />
+    <Compile Include="MappingProtocol.cs" />
     <Compile Include="NetworkBehaviorGroups.cs" />
+    <Compile Include="OutboundBehaviorTest.cs" />
+    <Compile Include="PortForwarder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="StunClient.cs" />
     <Compile Include="StunMage.cs" />
+    <Compile Include="StunMessage.cs" />
+    <Compile Include="STUN_ChangeRequest.cs" />
+    <Compile Include="STUN_ErrorCode.cs" />
+    <Compile Include="STUN_MessageType.cs" />
+    <Compile Include="STUN_NetType.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

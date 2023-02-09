@@ -33,10 +33,11 @@ namespace STUN {
         /// <param name="log"></param>
         public StunClient(IPEndPoint stunServerEndPoint, int connectionAttempts = 3, double connectionTimeout = 2.0, Action<string> log = null) {
             disposeSocket = true;
-            Socket s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            s.ReceiveTimeout = (int)ConnectionTimeout * 1000;
-            s.SendTimeout = (int)ConnectionTimeout * 1000;
-            s.Bind(new IPEndPoint(IPAddress.Any, 0));
+            Socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp) {
+                ReceiveTimeout = (int)ConnectionTimeout * 1000,
+                SendTimeout = (int)ConnectionTimeout * 1000
+            };
+            Socket.Bind(new IPEndPoint(IPAddress.Any, 0));
 
             ip_stunServer_primary = stunServerEndPoint.Address;
             port_stunServer_primary = stunServerEndPoint.Port;
