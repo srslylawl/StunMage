@@ -1,4 +1,4 @@
-﻿
+
 using Mono.Nat;
 using System;
 using System.Net;
@@ -211,6 +211,7 @@ namespace STUN {
 
                                     message_out.type = HolePunchMessage.MessageType.Ready;
                                     message_out.mirroredEndPoint = (IPEndPoint)sourceEndPoint;
+                                    nextSendTime = DateTime.Now.AddSeconds(HolePunchSendInterval);
                                 }
                                 readyOrResponseReceived = true;
                                 break;
