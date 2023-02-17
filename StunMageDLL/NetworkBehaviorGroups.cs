@@ -113,7 +113,8 @@ namespace STUN {
                     };
 
                     if (other.OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable) {
-
+                        eval.ConnectionCondition = ConnectionCondition.None;
+                        return eval;
                     }
 
                     eval.ConnectionCondition = OutgoingBehaviorGroup == OutgoingBehaviorGroup.Predictable
