@@ -80,7 +80,7 @@ namespace STUN {
             var response = await BasicBindingRequest(endPoint_primaryServerPrimaryPoint);
             if (response == null) {
                 Log?.Invoke("===========");
-                Log?.Invoke("No response at all - UDP seems to be blocked.");
+                Log?.Invoke("No response at all - Stun Server is down or UDP could be blocked.");
                 Log?.Invoke("===========");
                 NATType = STUN_NetType.UDP_blocked;
                 return new IPEndPoint(IPAddress.None, 0);
@@ -100,7 +100,7 @@ namespace STUN {
             var response = await BasicBindingRequest(endPoint_primaryServerPrimaryPoint);
             if (response == null) {
                 Log?.Invoke("===========");
-                Log?.Invoke("No response at all - UDP seems to be blocked.");
+                Log?.Invoke("No response at all - Stun Server is down or UDP could be blocked.");
                 Log?.Invoke("===========");
                 NATType = STUN_NetType.UDP_blocked;
                 return;

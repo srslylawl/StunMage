@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Configuration;
 using System.Net;
 using System.Net.Sockets;
 using System.Windows.Forms;
@@ -66,7 +67,6 @@ namespace STUN {
 
         private Socket queriedSocket;
         private CheckBox CheckBox_PreferListenPort;
-        private bool socketIsQueried;
 
         public winFormMain() {
             InitializeComponent();
@@ -74,6 +74,28 @@ namespace STUN {
 
             Combo_IncomingGrp.DataSource = Enum.GetValues(typeof(IncomingBehaviorGroup));
             Combo_OutgoingGrp.DataSource = Enum.GetValues(typeof(OutgoingBehaviorGroup));
+
+            GetStunServerSettings(1, "stun.dls.net", "3478");
+            GetStunServerSettings(2, "stun.gmx.de", "3478");
+        }
+
+        private void GetStunServerSettings(int id, string fallbackServer, string fallbackPort) {
+            string stunServer = ConfigurationManager.AppSettings[$"StunServer{id}"];
+            string stunPort = ConfigurationManager.AppSettings[$"StunPort{id}"];
+            bool noServer = string.IsNullOrEmpty(stunServer);
+            if(noServer) {
+                stunServer = fallbackServer;
+                stunPort = fallbackPort;
+            }
+            bool noPort = string.IsNullOrEmpty(stunPort);
+            if(noPort) {
+                stunPort = fallbackPort;
+            }
+
+            var serverTextField = id == 1 ? Input_StunServer : Input_StunServer_2;
+            var serverPortField = id == 2 ? Input_StunServer_Port : Input_StunServer2_Port;
+            serverTextField.Text = stunServer;
+            serverPortField.Text = stunPort;
         }
 
         private void Log(string str) {
@@ -120,6 +142,10 @@ namespace STUN {
                 Text_OutgoingGrp.Text = stunMageClient.EndPointBehaviorTuple.OutgoingBehaviorGroup.ToString();
                 Text_Outbound_Behavior.Text = stunMageClient.OutboundBehaviorType.ToString();
                 EvaluateConnectionCompatibility();
+                SaveServerSettings("StunServer1", Input_StunServer.Text);
+                SaveServerSettings("StunServer2", Input_StunServer_2.Text);
+                SaveServerSettings("StunPort1", Input_StunServer_Port.Text);
+                SaveServerSettings("StunPort2", Input_StunServer2_Port.Text);
             }
             catch (Exception ex) {
                 Log($"Error: ({ex.GetType().Name}) {ex.Message}");
@@ -276,6 +302,8 @@ namespace STUN {
             this.label5 = new System.Windows.Forms.Label();
             this.Button_HolePunchQueried = new System.Windows.Forms.Button();
             this.Button_QueryPort = new System.Windows.Forms.Button();
+            this.Text_QueriedPort = new System.Windows.Forms.TextBox();
+            this.CheckBox_PreferListenPort = new System.Windows.Forms.CheckBox();
             this.Text_NAT_Type = new System.Windows.Forms.TextBox();
             this.Label_STUN_Server_secondary = new System.Windows.Forms.Label();
             this.Input_HolePunch_Address = new System.Windows.Forms.TextBox();
@@ -298,10 +326,8 @@ namespace STUN {
             this.Text_RecommendedRole = new System.Windows.Forms.TextBox();
             this.panel2 = new System.Windows.Forms.Panel();
             this.CheckBox_RequirePassword = new System.Windows.Forms.CheckBox();
-            this.Text_QueriedPort = new System.Windows.Forms.TextBox();
             this.panel3 = new System.Windows.Forms.Panel();
             this.panel1 = new System.Windows.Forms.Panel();
-            this.CheckBox_PreferListenPort = new System.Windows.Forms.CheckBox();
             Label_Remote = new System.Windows.Forms.Label();
             Label_Result = new System.Windows.Forms.Label();
             Local = new System.Windows.Forms.Label();
@@ -389,7 +415,6 @@ namespace STUN {
             this.Input_StunServer.RightToLeft = System.Windows.Forms.RightToLeft.No;
             this.Input_StunServer.Size = new System.Drawing.Size(135, 20);
             this.Input_StunServer.TabIndex = 3;
-            this.Input_StunServer.Text = "stun.stunprotocol.org";
             this.Input_StunServer.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
             this.toolTip1.SetToolTip(this.Input_StunServer, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" +
         "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" +
@@ -584,7 +609,6 @@ namespace STUN {
             this.Input_StunServer_2.RightToLeft = System.Windows.Forms.RightToLeft.No;
             this.Input_StunServer_2.Size = new System.Drawing.Size(135, 20);
             this.Input_StunServer_2.TabIndex = 26;
-            this.Input_StunServer_2.Text = "stun.dls.net";
             this.Input_StunServer_2.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
             this.toolTip1.SetToolTip(this.Input_StunServer_2, "Hostname/IP of a publicly hosted STUN Server.\r\nThese have to be publicly reachabl" +
         "e - and not be behind a NAT/Firewall.\r\nThere are a lot of public STUN Servers th" +
@@ -685,6 +709,30 @@ namespace STUN {
         ".");
             this.Button_QueryPort.UseVisualStyleBackColor = true;
             this.Button_QueryPort.Click += new System.EventHandler(this.Button_QueryPort_Click);
+            // 
+            // Text_QueriedPort
+            // 
+            this.Text_QueriedPort.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.Text_QueriedPort.Location = new System.Drawing.Point(103, 87);
+            this.Text_QueriedPort.Name = "Text_QueriedPort";
+            this.Text_QueriedPort.ReadOnly = true;
+            this.Text_QueriedPort.RightToLeft = System.Windows.Forms.RightToLeft.No;
+            this.Text_QueriedPort.Size = new System.Drawing.Size(67, 20);
+            this.Text_QueriedPort.TabIndex = 36;
+            this.Text_QueriedPort.Text = "unknown";
+            this.toolTip1.SetToolTip(this.Text_QueriedPort, "The queried port number");
+            // 
+            // CheckBox_PreferListenPort
+            // 
+            this.CheckBox_PreferListenPort.AutoSize = true;
+            this.CheckBox_PreferListenPort.CheckAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.CheckBox_PreferListenPort.Location = new System.Drawing.Point(176, 89);
+            this.CheckBox_PreferListenPort.Name = "CheckBox_PreferListenPort";
+            this.CheckBox_PreferListenPort.Size = new System.Drawing.Size(107, 17);
+            this.CheckBox_PreferListenPort.TabIndex = 41;
+            this.CheckBox_PreferListenPort.Text = "Prefer Listen Port";
+            this.toolTip1.SetToolTip(this.CheckBox_PreferListenPort, "Trys to bind socket to listen port, then returns queried result.");
+            this.CheckBox_PreferListenPort.UseVisualStyleBackColor = true;
             // 
             // Text_NAT_Type
             // 
@@ -914,18 +962,6 @@ namespace STUN {
             this.CheckBox_RequirePassword.UseVisualStyleBackColor = true;
             this.CheckBox_RequirePassword.CheckedChanged += new System.EventHandler(this.CheckBox_RequirePassword_CheckedChanged);
             // 
-            // Text_QueriedPort
-            // 
-            this.Text_QueriedPort.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.Text_QueriedPort.Location = new System.Drawing.Point(103, 87);
-            this.Text_QueriedPort.Name = "Text_QueriedPort";
-            this.Text_QueriedPort.ReadOnly = true;
-            this.Text_QueriedPort.RightToLeft = System.Windows.Forms.RightToLeft.No;
-            this.Text_QueriedPort.Size = new System.Drawing.Size(67, 20);
-            this.Text_QueriedPort.TabIndex = 36;
-            this.Text_QueriedPort.Text = "unknown";
-            this.toolTip1.SetToolTip(this.Text_QueriedPort, "The queried port number");
-            // 
             // panel3
             // 
             this.panel3.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
@@ -974,18 +1010,6 @@ namespace STUN {
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(636, 196);
             this.panel1.TabIndex = 58;
-            // 
-            // CheckBox_PreferListenPort
-            // 
-            this.CheckBox_PreferListenPort.AutoSize = true;
-            this.CheckBox_PreferListenPort.CheckAlign = System.Drawing.ContentAlignment.MiddleRight;
-            this.CheckBox_PreferListenPort.Location = new System.Drawing.Point(176, 89);
-            this.CheckBox_PreferListenPort.Name = "CheckBox_PreferListenPort";
-            this.CheckBox_PreferListenPort.Size = new System.Drawing.Size(107, 17);
-            this.CheckBox_PreferListenPort.TabIndex = 41;
-            this.CheckBox_PreferListenPort.Text = "Prefer Listen Port";
-            this.toolTip1.SetToolTip(this.CheckBox_PreferListenPort, "Trys to bind socket to listen port, then returns queried result.");
-            this.CheckBox_PreferListenPort.UseVisualStyleBackColor = true;
             // 
             // winFormMain
             // 
@@ -1086,6 +1110,24 @@ namespace STUN {
             Button_HolePunchQueried.Enabled = false;
             Button_HolePunch.Enabled = true;
             Input_PortToFree.Enabled = true;
+        }
+
+        private void SaveServerSettings(string key, string value) {
+            Configuration config = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+            if(config == null) {
+                ExeConfigurationFileMap configMap = new ExeConfigurationFileMap();
+                config = ConfigurationManager.OpenMappedExeConfiguration(configMap, ConfigurationUserLevel.None);
+                config.Save(ConfigurationSaveMode.Modified, true);
+            }
+            if(config.AppSettings.Settings[key] == null) {
+                config.AppSettings.Settings.Add(key, value);
+            }
+            else {
+                config.AppSettings.Settings[key].Value = value;
+            }
+            config.AppSettings.Settings[key].Value = value;
+            config.Save(ConfigurationSaveMode.Modified);
+            ConfigurationManager.RefreshSection("appSettings");
         }
     }
 }
