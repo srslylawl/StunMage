@@ -123,6 +123,11 @@ namespace STUN {
                 return;
             }
 
+            if (string.IsNullOrWhiteSpace(Input_StunServer_2.Text)) {
+                Log("No secondary STUN server specified.");
+                return;
+            }
+
             //Query first
 
             if (!stunMageClient.TryResolveHostName(Input_StunServer.Text, out var iPAddress_1)) {
